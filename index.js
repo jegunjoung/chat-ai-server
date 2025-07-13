@@ -1,4 +1,3 @@
-
 const express = require('express');
 const fetch = require('node-fetch');
 const cors = require('cors');
@@ -22,7 +21,7 @@ app.post('/chat', async (req, res) => {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        model: "gpt-3.5-turbo",
+        model: "gpt-3.5-turbo", // 또는 "gpt-4" (유료 사용자일 경우)
         messages: [
           { role: "system", content: "너는 친절한 상담사야." },
           { role: "user", content: message }
@@ -31,13 +30,15 @@ app.post('/chat', async (req, res) => {
     });
 
     const data = await response.json();
+    console.log("?? OpenAI 응답:", JSON.stringify(data, null, 2)); // ?? 로그로 출력
+
     res.send(data);
   } catch (error) {
-    console.error("에러 발생:", error);
-    res.status(500).send({ error: "AI 서버 처리 중 오류가 발생했어요." });
+    console.error("?? OpenAI 요청 중 에러 발생:", error);
+    res.status(500).send({ error: "OpenAI 요청 실패" });
   }
 });
 
 app.listen(port, () => {
-  console.log(`서버 실행 중: http://localhost:${port}`);
+  console.log(`?? 서버 실행 중: http://localhost:${port}`);
 });
