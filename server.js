@@ -1,73 +1,58 @@
 
 require('dotenv').config();
 const express = require('express');
-const bodyParser = require('body-parser');
 const cors = require('cors');
+const multer = require('multer');
+const bodyParser = require('body-parser');
 const { Configuration, OpenAIApi } = require('openai');
-const axios = require('axios');
 
 const app = express();
 app.use(cors());
-app.use(bodyParser.json({ limit: '10mb' }));
+app.use(bodyParser.json());
+const upload = multer({ storage: multer.memoryStorage() });
 
 const configuration = new Configuration({
   apiKey: process.env.OPENAI_API_KEY,
 });
 const openai = new OpenAIApi(configuration);
 
-app.post('/ask-gpt', async (req, res) => {
-  const { image, question } = req.body;
+app.post('/ask-gpt', upload.single('image'), async (req, res) => {
+  const { question } = req.body;
+  const imageBuffer = req.file ? req.file.buffer : null;
+  const base64Image = imageBuffer ? imageBuffer.toString('base64') : null;
 
   try {
+    const messages = [
+      {
+        role: 'system',
+        content: '당신은 사진 보정 전문가입니다. 사용자 질문과 이미지를 보고 자연스러운 답변을 해주세요.',
+      },
+    ];
+
+    const userContent = [];
+
+    if (question) userContent.push({ type: 'text', text: question });
+    if (base64Image) userContent.push({ type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64Image}` } });
+
+    messages.push({
+      role: 'user',
+      content: userContent,
+    });
+
     const response = await openai.createChatCompletion({
       model: 'gpt-4o',
-      messages: [
-        {
-          role: 'system',
-          content: '당신은 사진 보정 전문 AI 상담가입니다.',
-        },
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: question },
-            { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${image}` } }
-          ]
-        }
-      ],
-      temperature: 0.7,
+      messages,
     });
 
     const answer = response.data.choices[0].message.content;
     res.json({ answer });
-  } catch (error) {
-    console.error('GPT 응답 오류:', error.message);
-    res.status(500).send('GPT 응답 실패');
-  }
-});
-
-app.post('/send-kakao', async (req, res) => {
-  const { name, phone, question, image } = req.body;
-
-  try {
-    // 카카오톡 채널 메시지용 예시 텍스트 전송
-    const text = `📷 우리마을사진관 상담 접수
-
-👤 이름: ${name}
-📱 연락처: ${phone}
-💬 질문: ${question}`;
-
-    // 실제 카카오톡 메시지 전송은 비공개 API or Webhook 연동 필요
-    console.log('카카오로 보낼 내용:', text);
-    // 이미지도 함께 보내려면 webhook 또는 비즈니스 API 필요
-
-    res.send('카카오채널로 전송 완료');
   } catch (err) {
-    console.error('카카오 전송 실패:', err.message);
-    res.status(500).send('카카오 전송 실패');
+    console.error('GPT 요청 오류:', err.message);
+    res.status(500).json({ answer: 'AI 분석에 실패했습니다. 다시 시도해주세요.' });
   }
 });
 
 const PORT = 3000;
 app.listen(PORT, () => {
-  console.log(`✅ AI 상담 서버 작동 중: http://localhost:${PORT}`);
+  console.log(`🚀 우리마을사진관 AI 서버 작동 중: http://localhost:${PORT}`);
 });
