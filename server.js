@@ -1,58 +1,58 @@
 
 require('dotenv').config();
 const express = require('express');
-const cors = require('cors');
 const multer = require('multer');
-const bodyParser = require('body-parser');
+const cors = require('cors');
+const sharp = require('sharp');
 const { Configuration, OpenAIApi } = require('openai');
 
 const app = express();
+const port = process.env.PORT || 10000;
+
 app.use(cors());
-app.use(bodyParser.json());
-const upload = multer({ storage: multer.memoryStorage() });
+app.use(express.json());
 
 const configuration = new Configuration({
   apiKey: process.env.OPENAI_API_KEY,
 });
 const openai = new OpenAIApi(configuration);
 
+const upload = multer({ storage: multer.memoryStorage() });
+
 app.post('/ask-gpt', upload.single('image'), async (req, res) => {
-  const { question } = req.body;
-  const imageBuffer = req.file ? req.file.buffer : null;
-  const base64Image = imageBuffer ? imageBuffer.toString('base64') : null;
-
   try {
-    const messages = [
-      {
-        role: 'system',
-        content: '당신은 사진 보정 전문가입니다. 사용자 질문과 이미지를 보고 자연스러운 답변을 해주세요.',
-      },
-    ];
+    const { question } = req.body;
+    let imageInfo = '';
 
-    const userContent = [];
+    if (req.file) {
+      const resizedBuffer = await sharp(req.file.buffer)
+        .resize({ width: 800 })
+        .jpeg({ quality: 80 })
+        .toBuffer();
 
-    if (question) userContent.push({ type: 'text', text: question });
-    if (base64Image) userContent.push({ type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64Image}` } });
+      const base64Image = resizedBuffer.toString('base64');
+      imageInfo = `고객이 업로드한 사진이 포함되어 있습니다. 아래 base64로 전달됩니다:\n\n${base64Image.substring(0, 500)}... (생략)`;
+    }
 
-    messages.push({
-      role: 'user',
-      content: userContent,
-    });
+    const fullPrompt = `다음은 고객 질문입니다:\n"${question}"\n\n${imageInfo}\n\n이 질문에 대해 친절하게 답변해주세요.`;
 
-    const response = await openai.createChatCompletion({
+    const completion = await openai.createChatCompletion({
       model: 'gpt-4o',
-      messages,
+      messages: [
+        { role: 'system', content: '너는 사진 보정 전문가야. 사진 분석과 보정 가능성에 대해 설명해줘.' },
+        { role: 'user', content: fullPrompt },
+      ],
     });
 
-    const answer = response.data.choices[0].message.content;
-    res.json({ answer });
+    const gptAnswer = completion.data.choices[0].message.content;
+    res.json({ answer: gptAnswer });
+
   } catch (err) {
-    console.error('GPT 요청 오류:', err.message);
-    res.status(500).json({ answer: 'AI 분석에 실패했습니다. 다시 시도해주세요.' });
+    console.error('GPT 처리 중 오류:', err);
+    res.status(500).json({ error: '서버 오류 발생' });
   }
 });
 
-const PORT = 3000;
-app.listen(PORT, () => {
-  console.log(`🚀 우리마을사진관 AI 서버 작동 중: http://localhost:${PORT}`);
+app.listen(port, () => {
+  console.log(`✅ 서버가 실행 중입니다: http://localhost:${port}`);
 });
